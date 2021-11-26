@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapbox</title>
+    <script src='main.js'></script>
+    <script type="text/javascript" charset="utf-8" src="https://d3js.org/d3.v5.min.js"></script>
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.5.1/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.5.1/mapbox-gl.css' rel='stylesheet' />
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- START Mapbox -->
+    <div id='map'></div>
+    <script>
+        mapboxgl.accessToken =
+            'pk.eyJ1IjoidGNoMHV0Y2gwdSIsImEiOiJja3dmMnFhNGIwYWwwMndtdWZ2Z2llaGUzIn0.0LSMia3LHgf6KNcFI_r5dw';
+
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/light-v10',
+            center: [4.5, 45.5],
+            zoom: 7
+        });
+        let activeDeptId = null;
+
+        map.on('load', async () => {
+            const csvData = await fetch('/data/air_data_aurat_2016_2018.csv').then((response) => response
+                .text());
+            let pollutionByDept = {},
+                lineFields, csvLines = csvData.split("\n").slice(1);
+                
+            for (const line of csvLines) {
+                lineFields = line.split(';');
+                pollutionByDept[lineFields[0]] = parseFloat(lineFields[1]);
+            }
+
+            fetch('/data/departements.geojson').then((response) => response.json()).then((geojsonData) => {
+                for (const f of geojsonData.features) {
+                    f.properties.pollution = pollutionByDept[f.properties.nom];
+                }
+
+                map.addSource('departements', {
+                    'type': 'geojson',
+                    'data': geojsonData,
+                    'generateId': true
+                });
+
+                map.addLayer({
+                    'id': 'departements-fills',
+                    'type': 'fill',
+                    'source': 'departements',
+                    'layout': {},
+                    'paint': {
+                        'fill-color': '#777',
+                        'fill-opacity': [
+                            'case',
+                            ['boolean', ['feature-state', 'hover'], false],
+                            1,
+                            0.5
+                        ]
+                    }
+                });
+
+                map.addLayer({
+                    'id': 'departements-borders',
+                    'type': 'line',
+                    'source': 'departements',
+                    'layout': {},
+                    'paint': {
+                        'line-color': '#888',
+                        'line-width': 2
+                    }
+                });
+
+                map.on('mousemove', 'departements-fills', (e) => {
+                    if (e.features.length > 0) {
+                        if (activeDeptId !== null) {
+                            map.setFeatureState({
+                                source: 'departements',
+                                id: activeDeptId
+                            }, {
+                                hover: false
+                            });
+                        }
+                        activeDeptId = e.features[0].id;
+                        map.setFeatureState({
+                            source: 'departements',
+                            id: activeDeptId
+                        }, {
+                            hover: true
+                        });
+                    }
+                });
+
+                map.on('mouseleave', 'departements-fills', () => {
+                    if (activeDeptId !== null) {
+                        map.setFeatureState({
+                            source: 'departements',
+                            id: activeDeptId
+                        }, {
+                            hover: false
+                        });
+                    }
+                    activeDeptId = null;
+                });
+            })
+        });
+    </script>
+    <!-- END Mapbox -->
+</body>
+
+</html>
